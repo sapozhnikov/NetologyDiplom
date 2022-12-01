@@ -2,16 +2,32 @@ import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfReader;
 import com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static java.util.stream.Collectors.*;
+
 public class BooleanSearchEngine implements SearchEngine {
+    private final String stopWordsFileName = "stop-ru.txt";
     private Map<String, List<PageEntry>> searchIndex;
+    private Set<String> stopWords;
+
+    private void ParseStopWordsFile() {
+        try (BufferedReader bufReader = new BufferedReader(new FileReader(stopWordsFileName))) {
+            String line;
+            while ((line = bufReader.readLine()) != null) {
+                stopWords.add(line.toLowerCase());
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public BooleanSearchEngine(File pdfsDir) throws IOException {
         searchIndex = new HashMap<>();
+        stopWords = new HashSet<>();
+        ParseStopWordsFile();
         System.out.println("Indexing started ...");
 
         if (!pdfsDir.isDirectory()) {
@@ -46,10 +62,20 @@ public class BooleanSearchEngine implements SearchEngine {
     }
 
     @Override
-    public List<PageEntry> search(String word) {
-        return searchIndex.entrySet().stream().filter(x -> x.getKey().equals(word))
+    public List<PageEntry> search(String query) {
+        Set<String> words = new HashSet<>(List.of(query.split(" ")));
+        return searchIndex.entrySet().stream()
+                .filter(x -> !stopWords.contains(x.getKey()))
+                .filter(x -> words.contains(x.getKey()))
                 .map(Map.Entry::getValue)
                 .flatMap(List::stream)
+                .collect(groupingBy(PageEntry::getPdfName,
+                        groupingBy(PageEntry::getPage, Collectors.summingInt(PageEntry::getCount))))
+                .entrySet().stream()
+                .flatMap(page -> {
+                    return page.getValue().entrySet().stream()
+                            .map(numberCount -> new PageEntry(page.getKey(), numberCount.getKey(), numberCount.getValue()));
+                })
                 .sorted().collect(Collectors.toList());
     }
 }
