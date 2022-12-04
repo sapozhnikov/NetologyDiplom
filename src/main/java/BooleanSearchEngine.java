@@ -33,11 +33,14 @@ public class BooleanSearchEngine implements SearchEngine {
         if (!pdfsDir.isDirectory()) {
             throw new IllegalArgumentException("Wrong directory to index");
         }
-        String[] files = pdfsDir.list();
+        File[] files = pdfsDir.listFiles();
 
         assert files != null;
-        for (String file : files) {
-            PdfDocument doc = new PdfDocument(new PdfReader(pdfsDir + "/" + file));
+        for (File file : files) {
+            if (!file.isFile()) {
+                continue;
+            }
+            PdfDocument doc = new PdfDocument(new PdfReader(file));
             for (int pageNum = 0; pageNum < doc.getNumberOfPages(); pageNum++) {
                 String pageText = PdfTextExtractor.getTextFromPage(doc.getPage(pageNum + 1)).toLowerCase();
                 String[] words = pageText.split("\\P{IsAlphabetic}+");
@@ -54,7 +57,7 @@ public class BooleanSearchEngine implements SearchEngine {
                         entries = new ArrayList<>();
                         searchIndex.put(freq.getKey(), entries);
                     }
-                    entries.add(new PageEntry(file, pageNum + 1, freq.getValue()));
+                    entries.add(new PageEntry(file.getName(), pageNum + 1, freq.getValue()));
                 }
             }
         }
@@ -63,6 +66,9 @@ public class BooleanSearchEngine implements SearchEngine {
 
     @Override
     public List<PageEntry> search(String query) {
+        if ((query == null) || (query.isEmpty())) {
+            return Collections.emptyList();
+        }
         Set<String> words = new HashSet<>(List.of(query.split(" ")));
         return searchIndex.entrySet().stream()
                 .filter(x -> !stopWords.contains(x.getKey()))
@@ -74,7 +80,7 @@ public class BooleanSearchEngine implements SearchEngine {
                 .entrySet().stream()
                 .flatMap(page -> {
                     return page.getValue().entrySet().stream()
-                            .map(numberCount -> new PageEntry(page.getKey(), numberCount.getKey(), numberCount.getValue()));
+                            .map(numberAndCount -> new PageEntry(page.getKey(), numberAndCount.getKey(), numberAndCount.getValue()));
                 })
                 .sorted().collect(Collectors.toList());
     }
